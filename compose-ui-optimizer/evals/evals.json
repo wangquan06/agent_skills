@@ -1,0 +1,243 @@
+{
+  "skill_name": "compose-ui-optimizer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我看看这段代码有什么问题：\n\nclass UserViewModel : ViewModel() {\n    val uiState = MutableStateFlow(UserUiState())\n    var isLoading = false\n\n    fun loadUser(context: Context) {\n        viewModelScope.launch {\n            isLoading = true\n            val user = context.getSharedPreferences(\"prefs\", 0).getString(\"user\", \"\")\n            uiState.value = UserUiState(user = user)\n            isLoading = false\n        }\n    }\n}\n\ndata class UserUiState(var user: String? = null)",
+      "expected_output": "识别出 MutableStateFlow 对外暴露、UiState 字段用 var、ViewModel 持有 Context、无异常处理等严重问题，总分应较低",
+      "expectations": [
+        "输出包含健康度评分表，且总分不超过 45/100",
+        "识别出 MutableStateFlow 直接对外暴露问题",
+        "识别出 UiState 字段使用 var 而非 val 的问题",
+        "识别出 ViewModel 持有 Context 引用的问题",
+        "识别出 loadUser 缺少 try-catch 异常处理",
+        "优化后代码将 MutableStateFlow 改为 private，对外暴露 asStateFlow()",
+        "优化后代码将 UiState 字段全部改为 val",
+        "优化后代码不再持有 Context",
+        "优化后代码加入 try-catch 并更新 error 状态",
+        "包含验证清单（🔁 验证清单）",
+        "包含改动摘要表"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "优化一下这个 Composable：\n\n@Composable\nfun UserScreen(viewModel: UserViewModel = koinViewModel()) {\n    val state by viewModel.uiState.collectAsState()\n\n    Column {\n        Text(state.userName)\n        Text(state.email)\n        Button(onClick = { viewModel.logout() }) { Text(\"退出\") }\n        if (state.isLoading) CircularProgressIndicator()\n        if (state.error != null) Text(state.error!!)\n    }\n}",
+      "expected_output": "识别出无 Screen/Content 分离、无 Preview、collectAsState、!! 强制非空等问题，给出拆分后完整代码",
+      "expectations": [
+        "输出包含健康度评分表",
+        "识别出无 Screen/Content 分层问题，Compose组件化维度扣分",
+        "识别出无任何 @Preview 问题，Preview覆盖维度扣分",
+        "识别出使用 collectAsState() 而非 collectAsStateWithLifecycle() 的问题",
+        "识别出 state.error!! 强制非空的安全问题",
+        "优化后代码拆分为 Screen 和 Content 两层",
+        "优化后代码使用 collectAsStateWithLifecycle()",
+        "优化后代码消除 !! 使用",
+        "优化后代码包含至少一个 @Preview 函数",
+        "优化后 Content 接收 modifier: Modifier = Modifier 参数",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "代码审查：\n\n@Composable\nfun ProductListScreen() {\n    val viewModel: ProductViewModel = koinViewModel()\n    val uiState by viewModel.uiState.collectAsStateWithLifecycle()\n    ProductListContent(uiState = uiState, onIntent = viewModel::onIntent)\n}\n\n@Composable\nfun ProductListContent(\n    uiState: ProductUiState,\n    onIntent: (ProductUiIntent) -> Unit,\n    modifier: Modifier = Modifier\n) {\n    LazyColumn(modifier = modifier) {\n        items(uiState.products) { product ->\n            ProductCard(\n                product = product,\n                onClick = { onIntent(ProductUiIntent.OnProductClick(product.id)) }\n            )\n        }\n    }\n}\n\n@Preview\n@Composable\nfun ProductListContentPreview() {\n    ProductListContent(uiState = ProductUiState(products = emptyList()), onIntent = {})\n}\n\ndata class ProductUiState(val products: List<Product> = emptyList(), val isLoading: Boolean = false)",
+      "expected_output": "代码整体较好，识别出 LazyColumn 缺 key、ProductUiState 缺少稳定性标注、Preview 状态不全等中低严重度问题",
+      "expectations": [
+        "输出包含健康度评分表，总分高于 55/100",
+        "识别出 LazyColumn items 缺少 key 参数的问题",
+        "识别出 ProductUiState 含 List<T> 缺少稳定性标注",
+        "识别出 Preview 只有一种状态（缺少 Loading/Error 状态）",
+        "优化后代码在 items() 中加入 key 参数",
+        "优化后代码给 ProductUiState 加上 @Stable，或改用 ImmutableList 配合 @Immutable，不应单独标注 @Immutable 在裸 List<T> 字段上",
+        "不应主动补充多状态 Preview（多状态 Preview 须用户明确要求才追加）",
+        "不应将此代码评为严重问题（总分不低于 53/100）",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "帮我优化下面这段 ViewModel：\n\nclass OrderViewModel(private val repo: OrderRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(OrderUiState())\n    val uiState: StateFlow<OrderUiState> = _uiState.asStateFlow()\n\n    private val _effect = MutableSharedFlow<OrderEffect>(replay = 1)\n    val effect: SharedFlow<OrderEffect> = _effect.asSharedFlow()\n\n    fun onIntent(intent: OrderIntent) {\n        when (intent) {\n            is OrderIntent.PlaceOrder -> placeOrder(intent.items)\n            is OrderIntent.Cancel -> cancelOrder()\n        }\n    }\n\n    private fun placeOrder(items: List<Item>) {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true) }\n            val result = repo.placeOrder(items)\n            _uiState.update { it.copy(isLoading = false, order = result) }\n            _effect.emit(OrderEffect.NavigateToConfirmation(result.id))\n        }\n    }\n\n    private fun cancelOrder() {\n        viewModelScope.launch { _effect.emit(OrderEffect.NavigateBack) }\n    }\n}",
+      "expected_output": "识别出 SharedFlow replay=1 和缺少异常处理两个关键问题，其他结构整体良好",
+      "expectations": [
+        "输出包含健康度评分表",
+        "识别出 SharedFlow replay=1 的安全问题，安全性维度扣分",
+        "识别出 placeOrder 缺少 try-catch 异常处理，错误处理维度扣分",
+        "优化后代码将 SharedFlow 改为 replay=0, extraBufferCapacity=1",
+        "优化后代码在 placeOrder 中加入 try-catch",
+        "catch 块中有 error 状态更新和 isLoading 重置",
+        "优化后代码保留原有业务逻辑不变",
+        "包含验证清单（🔁 验证清单）",
+        "包含改动摘要表"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "这段代码怎么写更好？\n\nclass SearchViewModel(private val repo: SearchRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(SearchUiState())\n    val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()\n\n    fun search(query: String) {\n        viewModelScope.launch {\n            val results = repo.search(query)\n            _uiState.update { it.copy(results = results) }\n        }\n    }\n}\n\n@Immutable\ndata class SearchUiState(\n    val query: String = \"\",\n    val results: List<SearchResult> = emptyList(),\n    val isLoading: Boolean = false\n)\n\n@Composable\nfun SearchScreen(viewModel: SearchViewModel = koinViewModel()) {\n    val uiState by viewModel.uiState.collectAsStateWithLifecycle()\n    SearchContent(uiState = uiState, onSearch = viewModel::search)\n}\n\n@Composable\nfun SearchContent(\n    uiState: SearchUiState,\n    onSearch: (String) -> Unit,\n    modifier: Modifier = Modifier\n) {\n    Column(modifier = modifier) {\n        TextField(value = uiState.query, onValueChange = onSearch)\n        LazyColumn {\n            items(uiState.results, key = { it.id }) { result -> Text(result.title) }\n        }\n    }\n}\n\n@Preview\n@Composable\nfun SearchContentPreview() {\n    AppTheme { SearchContent(uiState = SearchUiState(), onSearch = {}) }\n}",
+      "expected_output": "代码质量良好，只识别出缺 Intent 封装、无异常处理、Preview 状态不全、@Immutable 标注用法有误等轻微改进点，不大规模重构",
+      "expectations": [
+        "输出包含健康度评分表，总分高于 65/100",
+        "不应将此代码评为严重问题",
+        "识别出缺少 UiIntent 封装的问题",
+        "识别出 search() 函数缺少 try-catch",
+        "识别出 Preview 缺少 Loading/Error 状态",
+        "优化建议严重度不出现 🔴高",
+        "识别出原 @Immutable 标注用在裸 List<T> 字段上属于错误用法，优化为 @Stable 或改用 ImmutableList",
+        "优化后代码保留 key = { it.id }",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "帮我看看这段代码，只给建议就好，不用改代码：\n\nclass CartViewModel(private val repo: CartRepository) : ViewModel() {\n    val cartItems = MutableStateFlow<List<CartItem>>(emptyList())\n\n    fun addItem(item: CartItem) {\n        viewModelScope.launch {\n            cartItems.value = cartItems.value + item\n        }\n    }\n}",
+      "expected_output": "用户明确说只要建议，应跳过 Step 5 不输出优化后代码，只输出分析+评分+建议",
+      "expectations": [
+        "输出包含健康度评分表",
+        "识别出 MutableStateFlow 直接对外暴露的问题",
+        "识别出缺少 UiState 封装、直接操作 cartItems.value 的问题",
+        "识别出 addItem 缺少 try-catch 异常处理",
+        "输出中不包含完整的优化后代码块（因用户明确说只要建议）",
+        "包含针对每个问题的具体改进建议"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "帮我优化这段代码片段：\n\nprivate fun loadOrders() {\n    viewModelScope.launch {\n        _uiState.update { it.copy(isLoading = true) }\n        val orders = repo.getOrders()\n        _uiState.update { it.copy(isLoading = false, orders = orders) }\n    }\n}",
+      "expected_output": "代码不完整，应说明假设前提后继续分析，识别出缺少 try-catch、error 未清除等问题",
+      "expectations": [
+        "输出注明代码不完整，说明分析基于可见片段及假设前提",
+        "不因代码不完整而拒绝分析",
+        "识别出缺少 try-catch 异常处理",
+        "识别出 isLoading=true 时未清除 error 状态",
+        "优化后代码包含 try-catch、error 清除、catch 中 isLoading 重置",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "帮我看下这段代码：\n\n@Immutable\ndata class ProductUiState(\n    val isLoading: Boolean = false,\n    val products: List<Product> = emptyList(),\n    val error: String? = null\n)\n\nsealed interface ProductUiIntent {\n    data object LoadProducts : ProductUiIntent\n    data class OnProductClick(val id: String) : ProductUiIntent\n    data object Refresh : ProductUiIntent\n}\n\nsealed interface ProductUiEffect {\n    data class NavigateToDetail(val id: String) : ProductUiEffect\n}\n\nclass ProductViewModel(private val repo: ProductRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(ProductUiState())\n    val uiState: StateFlow<ProductUiState> = _uiState.asStateFlow()\n\n    private val _effect = MutableSharedFlow<ProductUiEffect>(replay = 0, extraBufferCapacity = 1)\n    val effect: SharedFlow<ProductUiEffect> = _effect.asSharedFlow()\n\n    fun onIntent(intent: ProductUiIntent) {\n        when (intent) {\n            is ProductUiIntent.LoadProducts -> loadProducts()\n            is ProductUiIntent.OnProductClick -> navigateToDetail(intent.id)\n            is ProductUiIntent.Refresh -> loadProducts()\n        }\n    }\n\n    private fun loadProducts() {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true, error = null) }\n            try {\n                val products = withContext(Dispatchers.IO) { repo.getProducts() }\n                _uiState.update { it.copy(isLoading = false, products = products) }\n            } catch (e: Exception) {\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    private fun navigateToDetail(id: String) {\n        viewModelScope.launch { _effect.emit(ProductUiEffect.NavigateToDetail(id)) }\n    }\n}\n\n@Composable\nfun ProductScreen(\n    onNavigateToDetail: (String) -> Unit,\n    viewModel: ProductViewModel = koinViewModel()\n) {\n    val uiState by viewModel.uiState.collectAsStateWithLifecycle()\n    val context = LocalContext.current\n    LaunchedEffect(Unit) {\n        viewModel.effect.collect { effect ->\n            when (effect) {\n                is ProductUiEffect.NavigateToDetail -> onNavigateToDetail(effect.id)\n            }\n        }\n    }\n    ProductContent(uiState = uiState, onIntent = viewModel::onIntent)\n}\n\n@Composable\nfun ProductContent(\n    uiState: ProductUiState,\n    onIntent: (ProductUiIntent) -> Unit,\n    modifier: Modifier = Modifier\n) {\n    Box(modifier = modifier.fillMaxSize()) {\n        when {\n            uiState.isLoading -> CircularProgressIndicator()\n            uiState.error != null -> Text(uiState.error)\n            else -> LazyColumn {\n                items(uiState.products, key = { it.id }) { product ->\n                    Text(product.name)\n                }\n            }\n        }\n    }\n}\n\n@Preview(showBackground = true, name = \"Loading\")\n@Composable\nprivate fun ProductContentPreview_Loading() {\n    AppTheme { ProductContent(uiState = ProductUiState(isLoading = true), onIntent = {}) }\n}\n\n@Preview(showBackground = true, name = \"Success\")\n@Composable\nprivate fun ProductContentPreview_Success() {\n    AppTheme { ProductContent(uiState = ProductUiState(products = listOf(Product(\"1\", \"商品A\"))), onIntent = {}) }\n}\n\n@Preview(showBackground = true, name = \"Error\")\n@Composable\nprivate fun ProductContentPreview_Error() {\n    AppTheme { ProductContent(uiState = ProductUiState(error = \"加载失败\"), onIntent = {}) }\n}",
+      "expected_output": "代码整体质量良好符合规范，总分应较高，只有 Empty 状态 Preview 缺失、@Immutable 标注用法有误（裸 List<T> 不应直接配 @Immutable）等轻微问题",
+      "expectations": [
+        "输出包含健康度评分表，总分高于 80/100",
+        "MVI架构维度评级为 🟢",
+        "DI解耦维度评级为 🟢",
+        "安全性维度评级为 🟢",
+        "错误处理维度评级为 🟢",
+        "识别出 Preview 缺少 Empty 状态",
+        "识别出 @Immutable 标注用在含 List<T> 字段的 ProductUiState 上属于错误用法，应改为 @Stable 或换用 ImmutableList",
+        "不应识别出不存在的问题或进行不必要的重构",
+        "优化建议严重度均为 🟢低",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "帮我优化这段代码：\n\nclass ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(ProfileUiState())\n    val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()\n\n    val TAG = \"ProfileViewModel\"\n    var retryCount = 0\n    val maxRetry = 3\n\n    fun onIntent(intent: ProfileUiIntent) {\n        when (intent) {\n            is ProfileUiIntent.Load -> loadProfile()\n            is ProfileUiIntent.Retry -> retryLoad()\n        }\n    }\n\n    fun loadProfile() {\n        viewModelScope.launch {\n            val isFirstLoad = retryCount == 0\n            _uiState.update { it.copy(isLoading = true) }\n            try {\n                val profile = repo.getProfile()\n                _uiState.update { it.copy(isLoading = false, profile = profile) }\n            } catch (e: Exception) {\n                retryCount++\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    fun retryLoad() {\n        if (retryCount < maxRetry) loadProfile()\n    }\n}",
+      "expected_output": "识别出 TAG/maxRetry 应为局部常量或 companion object、loadProfile/retryLoad 应为 private、retryCount 暴露为成员变量但可简化等可见性问题",
+      "expectations": [
+        "输出包含健康度评分表，可见性与作用域维度扣分",
+        "识别出 TAG 不应为成员变量（应为 companion object 常量或移除）",
+        "识别出 maxRetry 应为 companion object 常量或局部常量，不应为成员变量",
+        "识别出 loadProfile() 和 retryLoad() 应为 private（外部通过 onIntent 调用）",
+        "识别出 isFirstLoad 是局部逻辑但未被使用（冗余变量）",
+        "优化后代码将 loadProfile 和 retryLoad 改为 private",
+        "优化后代码将 maxRetry 移至 companion object 或改为局部常量",
+        "包含验证清单（🔁 验证清单）"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "帮我优化这个代码，BaseViewModel 里的错误处理逻辑也一起改了：\n\nopen class BaseViewModel : ViewModel() {\n    protected fun handleError(e: Exception) {\n        // 全局错误处理\n    }\n}\n\nclass OrderViewModel(private val repo: OrderRepository) : BaseViewModel() {\n    private val _uiState = MutableStateFlow(OrderUiState())\n    val uiState: StateFlow<OrderUiState> = _uiState.asStateFlow()\n\n    fun loadOrders() {\n        viewModelScope.launch {\n            try {\n                val orders = repo.getOrders()\n                _uiState.update { it.copy(orders = orders) }\n            } catch (e: Exception) {\n                handleError(e)\n            }\n        }\n    }\n}",
+      "expected_output": "BaseViewModel 是共用文件，必须先询问用户是否同意修改，不能直接改动；只能先优化 OrderViewModel 部分",
+      "expectations": [
+        "输出中包含提示：BaseViewModel 是共用文件，修改会影响其他页面，询问用户是否继续",
+        "在未得到用户确认前，不直接输出修改 BaseViewModel 的代码",
+        "可以先对 OrderViewModel 部分给出优化建议或代码",
+        "识别出 loadOrders 缺少 isLoading 状态更新",
+        "识别出 loadOrders 缺少 error 状态更新（依赖 handleError 但状态未反映到 UiState）"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "帮我优化这段代码：\n\nclass BikeStatusViewModel(\n    private val bleManager: BleManager\n) : ViewModel() {\n    private val _uiState = MutableStateFlow(BikeStatusUiState())\n    val uiState: StateFlow<BikeStatusUiState> = _uiState.asStateFlow()\n\n    private var currentListener: BikeStatusListener? = null\n\n    fun onEvent(intent: BikeStatusUiIntent) {\n        when (intent) {\n            is BikeStatusUiIntent.StartMonitoring -> startMonitoring()\n            is BikeStatusUiIntent.StopMonitoring -> stopMonitoring()\n        }\n    }\n\n    private fun startMonitoring() {\n        currentListener?.let { bleManager.unregisterStatusListener(it) }\n        val listener = BikeStatusListener { status ->\n            _uiState.update { it.copy(status = status) }\n        }\n        currentListener = listener\n        bleManager.registerStatusListener(listener)\n    }\n\n    private fun stopMonitoring() {\n        currentListener?.let { bleManager.unregisterStatusListener(it) }\n        currentListener = null\n    }\n}",
+      "expected_output": "代码整体较好，优化时必须保留 unregisterStatusListener 调用逻辑不变，若调整 currentListener 处理方式须输出行为变更说明和回归清单",
+      "expectations": [
+        "优化后代码保留 startMonitoring 中 unregisterStatusListener 调用（防止重复注册）",
+        "优化后代码保留 stopMonitoring 中 unregisterStatusListener 调用",
+        "若改写了 currentListener?.let 为 if 或其他形式，须在 🔁 验证清单中说明等价性",
+        "不得删除任何监听器注册/注销的函数调用",
+        "包含 🔁 验证清单"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "帮我优化这段代码：\n\nclass NotificationViewModel(private val repo: NotificationRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(NotificationUiState())\n    val uiState: StateFlow<NotificationUiState> = _uiState.asStateFlow()\n\n    fun loadNotifications() {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true) }\n            try {\n                val notifications = withContext(Dispatchers.IO) { repo.getNotifications() }\n                _uiState.update { it.copy(isLoading = false, notifications = notifications) }\n            } catch (e: Exception) {\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    fun markAsRead(id: String) {\n        viewModelScope.launch {\n            repo.markAsRead(id)\n            val updated = _uiState.value.notifications.map {\n                if (it.id == id) it.copy(isRead = true) else it\n            }\n            _uiState.update { it.copy(notifications = updated) }\n        }\n    }\n}\n\ndata class NotificationUiState(\n    val isLoading: Boolean = false,\n    val notifications: List<Notification> = emptyList(),\n    val error: String? = null\n)\n\n@Composable\nfun NotificationScreen(viewModel: NotificationViewModel = koinViewModel()) {\n    val uiState by viewModel.uiState.collectAsStateWithLifecycle()\n    // 标题栏在 Screen 层\n    Column {\n        Text(\"通知中心\", style = MaterialTheme.typography.headlineMedium)\n        if (uiState.isLoading) CircularProgressIndicator()\n        NotificationContent(uiState = uiState, onEvent = viewModel::onEvent)\n    }\n}\n\n@Composable\nfun NotificationContent(\n    uiState: NotificationUiState,\n    onEvent: (NotificationUiIntent) -> Unit,\n    modifier: Modifier = Modifier\n) {\n    LazyColumn(modifier = modifier) {\n        items(uiState.notifications, key = { it.id }) { notification ->\n            NotificationItem(notification = notification, onRead = { onEvent(NotificationUiIntent.MarkAsRead(notification.id)) })\n        }\n    }\n}\n\n@Preview\n@Composable\nfun NotificationContentPreview() {\n    NotificationContent(\n        uiState = NotificationUiState(\n            notifications = listOf(\n                Notification(\"1\", \"系统更新\", \"新版本已发布\", false),\n                Notification(\"2\", \"安全提醒\", \"请修改密码\", true)\n            )\n        ),\n        onEvent = {}\n    )\n}",
+      "expected_output": "输出严格遵循 output-template.md 格式：功能说明、健康度评估表（含各维度得分/评级）、优化建议（含问题位置/方案/原因）、改动摘要表",
+      "expectations": [
+        "输出包含 ## 代码分析 段落，功能说明 2-3 句",
+        "输出包含 ## 健康度评估 段落，使用表格格式（维度/得分/问题数/评级）",
+        "健康度评估表包含总分行，评级使用 🟢/🟡/🔴 符号",
+        "输出包含 ## 优化建议 段落，每条建议标注维度和严重度",
+        "优化建议格式为：问题位置 | 建议方案 | 原因说明",
+        "输出包含 ## 🔁 验证清单 段落",
+        "输出包含 ## 改动摘要 段落，使用表格格式（改前/改后/收益）",
+        "识别出 Screen 层标题栏不应在 Screen 层（应在 Content 层）的问题",
+        "识别出 NotificationUiState 含 List<T> 缺少稳定性标注（应为 @Stable，或改用 ImmutableList 配合 @Immutable）"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "帮我优化这段代码（这是一个超过 500 行的大文件，包含多个函数和组件）：\n\n// 此处假设 DashboardScreen.kt 是一个 600 行的文件，包含以下关键函数：\n\nclass DashboardViewModel(private val repo: DashboardRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(DashboardUiState())\n    val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()\n\n    fun onIntent(intent: DashboardUiIntent) {\n        when (intent) {\n            is DashboardUiIntent.Load -> loadDashboard()\n            is DashboardUiIntent.Refresh -> loadDashboard()\n            is DashboardUiIntent.ToggleSection -> toggleSection(intent.section)\n        }\n    }\n\n    private fun loadDashboard() {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true) }\n            try {\n                val data = withContext(Dispatchers.IO) { repo.getDashboardData() }\n                _uiState.update { it.copy(isLoading = false, data = data) }\n            } catch (e: Exception) {\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    private fun toggleSection(section: SectionType) {\n        val current = _uiState.value.expandedSections\n        _uiState.update { it.copy(expandedSections = current xor section) }\n    }\n}",
+      "expected_output": "大文件（>500行）应使用精准 diff 块输出改动，而非输出完整文件",
+      "expectations": [
+        "输出使用精准 diff 块格式（包含文件名和行号范围），而非输出整个文件内容",
+        "改动摘要中说明改动范围（涉及的函数/行号）",
+        "识别出缺少 try-catch 的问题",
+        "识别出缺少 error 状态清除的问题",
+        "识别出 DashboardUiState 含 Set<SectionType> 可能需要 @Stable 标注",
+        "不因文件大而省略任何检查维度"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "帮我优化这段代码，注意保留所有原始注释：\n\nclass SettingsViewModel(private val prefs: SettingsRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(SettingsUiState())\n    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()\n\n    // 加载用户设置\n    fun loadSettings() {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true) }\n            try {\n                // 从本地存储获取设置\n                val settings = withContext(Dispatchers.IO) { prefs.getSettings() }\n                _uiState.update { it.copy(isLoading = false, settings = settings) }\n            } catch (e: Exception) {\n                // 处理加载失败\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    /*\n     * 保存设置到本地存储\n     * 包括主题、语言、通知开关等\n     */\n    fun saveSettings(newSettings: Settings) {\n        viewModelScope.launch {\n            try {\n                withContext(Dispatchers.IO) { prefs.saveSettings(newSettings) }\n                _uiState.update { it.copy(settings = newSettings) }\n                // TODO: 发送保存成功事件\n            } catch (e: Exception) {\n                _uiState.update { it.copy(error = e.message) }\n            }\n        }\n    }\n\n    // 切换主题模式（深色/浅色/跟随系统）\n    fun toggleTheme(mode: ThemeMode) {\n        val current = _uiState.value.settings\n        _uiState.update { it.copy(settings = current.copy(themeMode = mode)) }\n    }\n}",
+      "expected_output": "优化后代码必须保留所有原始注释（行注释和块注释），包括 // 注释和 /* */ 块注释，不得删除、简化、改写或翻译",
+      "expectations": [
+        "优化后代码保留所有 // 行注释（加载用户设置、从本地存储获取设置、处理加载失败、切换主题模式）",
+        "优化后代码保留 /* */ 块注释（保存设置到本地存储的多行注释）",
+        "优化后代码保留 TODO 注释",
+        "不出现注释被删除或简化的情况",
+        "注释内容和位置与原代码一致",
+        "包含 🔁 验证清单，其中包含注释保留确认项"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "帮我优化这段代码：\n\nclass PaymentViewModel(private val repo: PaymentRepository) : ViewModel() {\n    private val _uiState = MutableStateFlow(PaymentUiState())\n    val uiState: StateFlow<PaymentUiState> = _uiState.asStateFlow()\n\n    fun processPayment(amount: Double) {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isProcessing = true) }\n            val result = repo.processPayment(amount)\n            _uiState.update { it.copy(isProcessing = false, result = result) }\n        }\n    }\n}\n\ndata class PaymentUiState(\n    val isProcessing: Boolean = false,\n    val result: PaymentResult? = null\n)",
+      "expected_output": "编译验证阶段：若 skill 有运行编译命令的能力，应尝试验证编译；若无，应在验证清单中提醒用户手动编译验证",
+      "expectations": [
+        "识别出缺少 try-catch 异常处理",
+        "识别出缺少 error 状态",
+        "识别出 PaymentUiState 含 nullable 字段但无 error 字段",
+        "优化后代码包含 try-catch",
+        "输出中包含编译验证相关提示（如 🔁 验证清单中包含编译验证步骤，或说明如何运行编译命令）",
+        "若提及编译命令，格式为 ./gradlew :<module>:compileDebugKotlin（Android）或 ./gradlew :<module>:compileKotlin<Target>（KMP）"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "帮我看看这段代码质量怎么样：\n\n@Stable\ndata class UserUiState(\n    val isLoading: Boolean = false,\n    val users: List<User> = emptyList(),\n    val error: String? = null\n)\n\nsealed interface UserUiIntent {\n    data object LoadUsers : UserUiIntent\n    data class OnUserClick(val userId: String) : UserUiIntent\n    data object Refresh : UserUiIntent\n}\n\nsealed interface UserUiEffect {\n    data class NavigateToDetail(val userId: String) : UserUiEffect\n    data class ShowToast(val message: String) : UserUiEffect\n}\n\ninterface UserRepository {\n    suspend fun getUsers(): List<User>\n}\n\nclass UserViewModel(\n    private val repository: UserRepository\n) : ViewModel() {\n    private val _uiState = MutableStateFlow(UserUiState())\n    val uiState: StateFlow<UserUiState> = _uiState.asStateFlow()\n\n    private val _uiEffect = MutableSharedFlow<UserUiEffect>(\n        replay = 0,\n        extraBufferCapacity = 1,\n        onBufferOverflow = BufferOverflow.DROP_OLDEST\n    )\n    val uiEffect: SharedFlow<UserUiEffect> = _uiEffect.asSharedFlow()\n\n    init { onEvent(UserUiIntent.LoadUsers) }\n\n    fun onEvent(intent: UserUiIntent) {\n        when (intent) {\n            is UserUiIntent.LoadUsers   -> loadUsers()\n            is UserUiIntent.OnUserClick -> navigateToDetail(intent.userId)\n            is UserUiIntent.Refresh     -> loadUsers()\n        }\n    }\n\n    private fun loadUsers() {\n        viewModelScope.launch {\n            _uiState.update { it.copy(isLoading = true, error = null) }\n            try {\n                val users = withContext(Dispatchers.IO) { repository.getUsers() }\n                _uiState.update { it.copy(isLoading = false, users = users) }\n            } catch (e: Exception) {\n                _uiState.update { it.copy(isLoading = false, error = e.message) }\n            }\n        }\n    }\n\n    private fun navigateToDetail(userId: String) {\n        viewModelScope.launch {\n            _uiEffect.emit(UserUiEffect.NavigateToDetail(userId))\n        }\n    }\n}\n\n@Composable\nfun UserScreen(\n    onNavigateToDetail: (String) -> Unit,\n    viewModel: UserViewModel = koinViewModel()\n) {\n    val uiState by viewModel.uiState.collectAsStateWithLifecycle()\n\n    LaunchedEffect(Unit) {\n        viewModel.uiEffect.collect { effect ->\n            when (effect) {\n                is UserUiEffect.NavigateToDetail -> onNavigateToDetail(effect.userId)\n                is UserUiEffect.ShowToast -> { /* handled in Screen */ }\n            }\n        }\n    }\n\n    UserContent(uiState = uiState, onEvent = viewModel::onEvent)\n}\n\n@Composable\nfun UserContent(\n    uiState: UserUiState,\n    onEvent: (UserUiIntent) -> Unit,\n    modifier: Modifier = Modifier\n) {\n    LazyColumn(modifier = modifier.fillMaxSize()) {\n        items(uiState.users, key = { it.id }) { user ->\n            UserCard(user = user, onClick = { onEvent(UserUiIntent.OnUserClick(user.id)) })\n        }\n    }\n}\n\n@Preview(showBackground = true)\n@Composable\nprivate fun UserContentPreview() {\n    AppTheme {\n        UserContent(\n            uiState = UserUiState(users = listOf(User(\"1\", \"张三\"), User(\"2\", \"李四\"))),\n            onEvent = {}\n        )\n    }\n}",
+      "expected_output": "代码质量良好，严格遵循 MVI 架构和 Compose 最佳实践，总分应在 90/100 以上",
+      "expectations": [
+        "输出包含健康度评分表，总分不低于 85/100",
+        "MVI 架构维度评级为 🟢",
+        "Compose 组件化维度评级为 🟢",
+        "错误处理维度评级为 🟢",
+        "安全性维度评级为 🟢",
+        "重组性能维度评级为 🟢",
+        "可测试性维度评级为 🟢",
+        "不提出不必要的大规模重构建议",
+        "不提出不存在的违规项",
+        "不主动建议添加多状态 Preview"
+      ]
+    }
+  ]
+}
