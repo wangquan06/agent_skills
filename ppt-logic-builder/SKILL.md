@@ -110,7 +110,7 @@ description: Use this skill whenever the user wants to create a PowerPoint/PPT p
 
 skill 可用时，**用大纲确认过的标题、核心信息、顺序作为输入**，不在生成时改动内容结构——发现大纲有问题就回阶段1修正，不在生成阶段直接改逻辑。
 
-**关于模板**：生成前检查 `assets/templates/` 目录（当前为空）。对应档位的模板文件存在时，让 pptx skill 走"基于模板编辑"路径（套入内容，不自由设计）。文件不存在时按默认流程生成。命名规则见 `references/template-usage.md`。
+**关于模板**：生成前检查 `assets/templates/` 目录。对应档位的模板文件存在时，让 pptx skill 走"基于模板编辑"路径（套入内容，不自由设计）。文件不存在时按默认流程生成。命名规则见 `references/template-usage.md`。
 
 ### Step 3 — 修改回路
 
